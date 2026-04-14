@@ -1,23 +1,20 @@
 import React, { useState } from 'react';
-import { User, Mail, Lock, Eye, EyeOff, Zap, AtSign } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, Zap, AtSign } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
-// Định nghĩa kiểu dữ liệu cho Form
+// Đã xóa full_name
 interface FormState {
-  full_name: string;
   username: string;
   email: string;
   password: string;
   confirm: string;
 }
 
-// Định nghĩa các key hợp lệ của form để TS không báo lỗi khi loop
 type FormKey = keyof FormState;
 
 export default function RegisterPage() {
   const { setCurrentPage } = useApp();
   const [form, setForm] = useState<FormState>({
-    full_name: '',
     username: '',
     email: '',
     password: '',
@@ -36,7 +33,6 @@ export default function RegisterPage() {
     setError('');
     setSuccess('');
 
-    // 1. Validation cơ bản
     if (!form.username || !form.email || !form.password) {
       setError('Vui lòng điền đầy đủ các thông tin bắt buộc (*).');
       return;
@@ -49,13 +45,11 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      // 2. Gọi API thật
       const response = await fetch(`${BASE_URL}/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        // Backend Go của cậu cần 3 trường này
         body: JSON.stringify({
           username: form.username,
           email: form.email,
@@ -63,7 +57,6 @@ export default function RegisterPage() {
         }),
       });
 
-      // Kiểm tra content-type để tránh lỗi parse JSON khi server chết
       const contentType = response.headers.get("content-type");
       let data;
       if (contentType && contentType.includes("application/json")) {
@@ -76,10 +69,8 @@ export default function RegisterPage() {
         throw new Error(data.error || 'Đăng ký thất bại, vui lòng thử lại.');
       }
 
-      // 3. Thành công
       setSuccess('Đăng ký tài khoản thành công!');
 
-      // Chuyển trang sau 1.5s
       setTimeout(() => {
         setCurrentPage('login');
       }, 1500);
@@ -91,9 +82,8 @@ export default function RegisterPage() {
     }
   };
 
-  // Cấu hình các field để render cho gọn
+  // Đã xóa config của full_name
   const fields: { key: FormKey; label: string; placeholder: string; icon: any; type: string }[] = [
-    { key: 'full_name', label: 'Họ và tên', placeholder: 'Nguyễn Văn A', icon: User, type: 'text' },
     { key: 'username', label: 'Tên đăng nhập *', placeholder: 'gopher01', icon: AtSign, type: 'text' },
     { key: 'email', label: 'Email *', placeholder: 'test@example.com', icon: Mail, type: 'email' },
   ];

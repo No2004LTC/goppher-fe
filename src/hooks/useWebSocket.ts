@@ -1,9 +1,18 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 
-export function useWebSocket(url, onMessage) {
-  const wsRef = useRef(null);
+export function useWebSocket(url: string | null, onMessage?: (data: any) => void) {
+  const wsRef = useRef<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
-  const [connectionError, setConnectionError] = useState(null);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+
+  // 🔴 THUỐC ĐẶC TRỊ "STALE CLOSURE": 
+  // Dùng useRef để luôn giữ bản sao mới nhất của hàm onMessage
+  const savedOnMessage = useRef(onMessage);
+
+  useEffect(() => {
+    savedOnMessage.current = onMessage;
+  }, [onMessage]);
+  // ----------------------------------------------------
 
   useEffect(() => {
     if (!url) return;
@@ -20,9 +29,10 @@ export function useWebSocket(url, onMessage) {
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          if (onMessage) onMessage(data);
+          // 🔴 Gọi hàm thông qua ref để luôn lấy được state mới nhất của ChatBox
+          if (savedOnMessage.current) savedOnMessage.current(data);
         } catch {
-          if (onMessage) onMessage({ content: event.data });
+          if (savedOnMessage.current) savedOnMessage.current({ content: event.data });
         }
       };
 
@@ -45,7 +55,7 @@ export function useWebSocket(url, onMessage) {
     };
   }, [url]);
 
-  const sendMessage = useCallback((message) => {
+  const sendMessage = useCallback((message: any) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(message));
       return true;

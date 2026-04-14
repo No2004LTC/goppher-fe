@@ -107,8 +107,8 @@ export default function CreatePost({ onPostSuccess }: CreatePostProps) {
         />
         <div className="flex-1">
           <textarea
-            // Sửa lại cú pháp placeholder
-            placeholder={`${user?.full_name || user?.username || 'Gopher'} ơi, bạn đang nghĩ gì vậy?`}
+            // ĐÃ SỬA CHỖ NÀY: Bỏ full_name đi để chiều lòng TypeScript
+            placeholder={`${user?.username || 'Gopher'} ơi, bạn đang nghĩ gì vậy?`}
             value={content}
             onChange={(e) => setContent(e.target.value)}
             rows={3}
@@ -142,7 +142,6 @@ export default function CreatePost({ onPostSuccess }: CreatePostProps) {
             </span>
             <span className="text-xs text-blue-600 font-bold">{uploadProgress}%</span>
           </div>
-          {/* Cậu nhớ import component ProgressBar của cậu vào nhé */}
           <ProgressBar progress={uploadProgress} />
         </div>
       )}
@@ -152,7 +151,7 @@ export default function CreatePost({ onPostSuccess }: CreatePostProps) {
           <input
             type="file"
             ref={fileRef}
-            accept="image/*,video/*" // Cho phép chọn cả video nếu backend hỗ trợ
+            accept="image/*,video/*"
             className="hidden"
             onChange={handleImage}
           />

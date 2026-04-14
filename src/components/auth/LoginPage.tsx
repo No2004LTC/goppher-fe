@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { Mail, Lock, Eye, EyeOff, Zap, AlertCircle } from 'lucide-react';
+import { Lock, Eye, EyeOff, Zap, AlertCircle, User } from 'lucide-react'; // Đã thêm User, bỏ Mail
 import { useApp } from '../../context/AppContext';
 
 export default function LoginPage() {
   const { login, setCurrentPage } = useApp();
-  const [form, setForm] = useState({ email: '', password: '' });
+  const [form, setForm] = useState({ identifier: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -26,11 +26,9 @@ export default function LoginPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Email hoặc mật khẩu không đúng');
+        throw new Error(data.error || 'Tài khoản hoặc mật khẩu không đúng');
       }
 
-      // --- FIX Ở ĐÂY ---
-      // Dựa vào log của cậu: { access_token: "...", token_type: "Bearer" }
       const token = data.access_token;
 
       if (!token) {
@@ -38,20 +36,20 @@ export default function LoginPage() {
         throw new Error('Server không trả về access_token.');
       }
 
-      // Vì Backend login của cậu chưa trả về object user, 
-      // ta tạo tạm một object user để App không bị lỗi Null ở Header/Sidebar
-      const tempUser = {
-        id: 0, // Sẽ được cập nhật sau
-        username: form.email.split('@')[0],
-        email: form.email,
-        full_name: form.email.split('@')[0],
-        avatar_url: ''
-      };
+      // --- ĐÃ FIX SẠCH SẼ Ở ĐÂY ---
+      // Nếu nhập email (có @), lấy phần chữ trước @. Nếu nhập username, lấy nguyên chuỗi.
+      const displayUsername = form.identifier.includes('@')
+        ? form.identifier.split('@')[0]
+        : form.identifier;
 
-      // Gọi hàm login từ AppContext để lưu token và user vào localStorage
-      login({ token, user: tempUser });
+      const userData = data.user;
 
-      // Thông báo cho người dùng biết đã xong (tùy chọn)
+      if (!userData || !userData.id) {
+        console.error("Backend không trả về thông tin user hoặc thiếu ID!");
+      }
+
+      login({ token, user: userData });
+
       console.log("Đăng nhập thành công, token đã lưu!");
 
     } catch (err: any) {
@@ -85,16 +83,18 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5 ml-1">Email</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5 ml-1">
+                Tài khoản hoặc Email
+              </label>
               <div className="relative group">
-                <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
+                <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
                 <input
-                  type="email"
+                  type="text"
                   required
-                  placeholder="name@gmail.com"
+                  placeholder="gopher01 hoặc name@gmail.com"
                   className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
-                  value={form.email}
-                  onChange={e => setForm({ ...form, email: e.target.value })}
+                  value={form.identifier}
+                  onChange={e => setForm({ ...form, identifier: e.target.value })}
                 />
               </div>
             </div>

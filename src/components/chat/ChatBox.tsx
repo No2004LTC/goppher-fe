@@ -3,78 +3,130 @@ import { Send, Phone, Video, MoreHorizontal, Smile, Image, ArrowLeft } from 'luc
 import MessageBubble from './MessageBubble';
 import LoadingSpinner from '../common/LoadingSpinner';
 import { useWebSocket } from '../../hooks/useWebSocket';
-import { initialMessages, autoReplies } from '../../data/mockData';
 import { useApp } from '../../context/AppContext';
 
-export default function ChatBox({ conversation, onBack }) {
-  const { user } = useApp();
-  const [messages, setMessages] = useState([]);
+export default function ChatBox({ conversation, onBack }: any) {
+  const { token } = useApp(); // Không cần dùng biến user ở đây nữa để tránh lỗi undefined
+  const [messages, setMessages] = useState<any[]>([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const bottomRef = useRef(null);
-  const inputRef = useRef(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const WS_URL = null;
+  const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api/v1';
+  const WS_URL = token ? `ws://localhost:8080/api/v1/ws?token=${token}` : null;
 
-  const { sendMessage: wsSend } = useWebSocket(WS_URL, (data) => {
+  // ==========================================
+  // 1. HỨNG WEBSOCKET & BỘ LỌC CHỐNG DỘI ÂM
+  // ==========================================
+  const { sendMessage: wsSend } = useWebSocket(WS_URL, (data: any) => {
+    if (data.type === 'NOTIFICATION') return;
+
     const incoming = {
-      id: Date.now() + 1,
-      sender_id: conversation.user.id,
-      receiver_id: user.id,
-      content: data.content || autoReplies[Math.floor(Math.random() * autoReplies.length)],
-      created_at: new Date().toISOString(),
+      id: data.id || data.ID || Date.now(),
+      sender_id: data.from_user_id || data.FromUserID,
+      receiver_id: data.to_user_id || data.ToUserID,
+      content: data.content || data.Content,
+      created_at: data.created_at || data.CreatedAt || new Date().toISOString(),
     };
-    setMessages((prev) => [...prev, incoming]);
-    setIsTyping(false);
+
+    // TƯ DUY ĐẢO NGƯỢC (Chống Echo):
+    // Nếu tin nhắn từ Server đẩy về có ID người gửi KHÁC với ID của người mình đang chat
+    // => Chắc chắn 100% đây là tin nhắn do CHÍNH MÌNH gửi bị Server dội ngược lại!
+    // => Bỏ qua luôn, vì mình đã tự in ra màn hình lúc bấm nút Send rồi.
+    if (String(incoming.sender_id) !== String(conversation?.user?.id)) {
+      return;
+    }
+
+    // Nếu lọt qua cửa trên, tức là tin nhắn CỦA NGƯỜI KIA gửi cho mình.
+    setMessages((prev) => {
+      // Chống lặp data lỡ mạng lag
+      const isDuplicate = prev.some(m => m.id === incoming.id || (m.content === incoming.content && String(m.sender_id) === String(incoming.sender_id)));
+      if (isDuplicate) return prev;
+      return [...prev, incoming];
+    });
   });
 
+  // ==========================================
+  // 2. LẤY LỊCH SỬ CHAT TỪ DATABASE
+  // ==========================================
   useEffect(() => {
+    const fetchHistory = async () => {
+      if (!conversation?.user?.id || !token) return;
+      try {
+        const response = await fetch(`${BASE_URL}/chats/${conversation.user.id}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const result = await response.json();
+
+        if (response.ok) {
+          let history = Array.isArray(result) ? result : (result.data || []);
+
+          // Map lại biến cho đúng chuẩn FE
+          history = history.map((msg: any) => ({
+            id: msg.id || msg.ID,
+            sender_id: msg.from_user_id || msg.FromUserID,
+            receiver_id: msg.to_user_id || msg.ToUserID,
+            content: msg.content || msg.Content,
+            created_at: msg.created_at || msg.CreatedAt,
+          }));
+
+          // Đảo ngược để tin nhắn cũ nổi lên trên, mới chìm xuống đáy
+          history = history.reverse();
+          setMessages(history);
+        }
+      } catch (error) {
+        console.error("Lỗi lấy lịch sử chat:", error);
+      }
+    };
+
     if (conversation) {
-      setMessages(initialMessages[conversation.id] || []);
+      fetchHistory();
       setInput('');
       inputRef.current?.focus();
     }
-  }, [conversation?.id]);
+  }, [conversation?.user?.id, token]);
 
+  // Cuộn xuống cuối mỗi khi có tin nhắn mới
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
+  // ==========================================
+  // 3. XỬ LÝ GỬI TIN NHẮN (OPTIMISTIC UI)
+  // ==========================================
   const handleSend = () => {
-    if (!input.trim()) return;
-    const msg = {
-      id: Date.now(),
-      sender_id: user.id,
+    if (!input.trim() || !conversation?.user?.id) return;
+    const contentText = input.trim();
+
+    // 3.1 Tự vẽ lên màn hình của mình ngay lập tức cho mượt
+    const localMsg = {
+      id: `local-${Date.now()}`,
+      sender_id: 'me', // Đánh dấu là 'me' để nó luôn khác với Partner ID -> Nằm bên Phải
       receiver_id: conversation.user.id,
-      content: input.trim(),
+      content: contentText,
       created_at: new Date().toISOString(),
     };
-    setMessages((prev) => [...prev, msg]);
-    setInput('');
-    setIsTyping(true);
+    setMessages((prev) => [...prev, localMsg]);
+    setInput(''); // Xóa input
 
-    wsSend(msg);
+    // 3.2 Bắn JSON xuống Golang qua WebSocket
+    const payload = {
+      to_user_id: conversation.user.id,
+      content: contentText,
+    };
 
-    setTimeout(() => {
-      const reply = {
-        id: Date.now() + 2,
-        sender_id: conversation.user.id,
-        receiver_id: user.id,
-        content: autoReplies[Math.floor(Math.random() * autoReplies.length)],
-        created_at: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, reply]);
-      setIsTyping(false);
-    }, 1200 + Math.random() * 800);
+    wsSend(payload);
   };
 
-  const handleKeyDown = (e) => {
+  const handleKeyDown = (e: any) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
   };
 
+  // Nếu chưa chọn ai để chat thì hiện giao diện trống
   if (!conversation) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 text-gray-400">
@@ -82,71 +134,51 @@ export default function ChatBox({ conversation, onBack }) {
           <Send size={28} className="text-gray-300" />
         </div>
         <p className="text-sm font-medium">Chọn một cuộc trò chuyện</p>
-        <p className="text-xs mt-1">để bắt đầu nhắn tin</p>
       </div>
     );
   }
 
+  const partnerName = conversation.user?.username || 'Người dùng';
+  const partnerAvatar = conversation.user?.avatar_url || `https://ui-avatars.com/api/?name=${partnerName}&background=random`;
+
   return (
     <div className="flex flex-col h-full bg-white">
+      {/* Header phòng chat */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 bg-white">
         {onBack && (
           <button onClick={onBack} className="mr-1 p-1.5 rounded-full hover:bg-gray-100 text-gray-500 transition lg:hidden">
             <ArrowLeft size={18} />
           </button>
         )}
-        <div className="relative">
-          <img src={conversation.user.avatar_url} alt={conversation.user.full_name} className="w-9 h-9 rounded-full object-cover" />
-          <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-400 rounded-full ring-2 ring-white" />
-        </div>
+        <img src={partnerAvatar} alt="" className="w-9 h-9 rounded-full object-cover" />
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-gray-900">{conversation.user.full_name}</p>
+          <p className="text-sm font-semibold text-gray-900">{partnerName}</p>
           <p className="text-xs text-green-500 font-medium">Đang hoạt động</p>
-        </div>
-        <div className="flex items-center gap-1">
-          <button className="p-2 rounded-full hover:bg-gray-100 text-gray-500 transition">
-            <Phone size={18} />
-          </button>
-          <button className="p-2 rounded-full hover:bg-gray-100 text-gray-500 transition">
-            <Video size={18} />
-          </button>
-          <button className="p-2 rounded-full hover:bg-gray-100 text-gray-500 transition">
-            <MoreHorizontal size={18} />
-          </button>
         </div>
       </div>
 
+      {/* Khu vực hiển thị tin nhắn */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-        {messages.map((msg) => (
-          <MessageBubble
-            key={msg.id}
-            message={msg}
-            isSent={msg.sender_id === user.id}
-            senderAvatar={conversation.user.avatar_url}
-          />
-        ))}
+        {messages.map((msg) => {
+          // PHÉP THUẬT PHÂN BỜ TRÁI/PHẢI Ở ĐÂY:
+          // Nếu sender_id khác với ID của người kia -> Suy ra là mình gửi!
+          const isMyMessage = String(msg.sender_id) !== String(conversation?.user?.id);
 
-        {isTyping && (
-          <div className="flex items-end gap-2">
-            <img src={conversation.user.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover" />
-            <div className="bg-gray-100 rounded-2xl rounded-bl-sm px-4 py-2.5 flex items-center gap-1">
-              <LoadingSpinner size="sm" color="gray" />
-              <span className="text-xs text-gray-500 ml-2">Đang nhập...</span>
-            </div>
-          </div>
-        )}
-
+          return (
+            <MessageBubble
+              key={msg.id}
+              message={msg}
+              isSent={isMyMessage}
+              senderAvatar={partnerAvatar}
+            />
+          );
+        })}
         <div ref={bottomRef} />
       </div>
 
+      {/* Khu vực nhập tin nhắn */}
       <div className="px-4 py-3 border-t border-gray-100 bg-white">
         <div className="flex items-end gap-2">
-          <button className="p-2 rounded-full hover:bg-gray-100 text-gray-500 transition flex-shrink-0">
-            <Image size={20} />
-          </button>
-          <button className="p-2 rounded-full hover:bg-gray-100 text-gray-500 transition flex-shrink-0">
-            <Smile size={20} />
-          </button>
           <div className="flex-1 bg-gray-100 rounded-2xl px-4 py-2.5 flex items-end">
             <textarea
               ref={inputRef}
@@ -155,15 +187,10 @@ export default function ChatBox({ conversation, onBack }) {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 resize-none focus:outline-none max-h-24"
-              style={{ lineHeight: '1.5' }}
+              className="flex-1 bg-transparent text-sm text-gray-800 focus:outline-none resize-none max-h-24"
             />
           </div>
-          <button
-            onClick={handleSend}
-            disabled={!input.trim()}
-            className="p-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-full transition disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
-          >
+          <button onClick={handleSend} disabled={!input.trim()} className="p-2.5 bg-blue-600 text-white rounded-full">
             <Send size={18} />
           </button>
         </div>
