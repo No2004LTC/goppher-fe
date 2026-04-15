@@ -3,6 +3,7 @@ import Sidebar from './Sidebar';
 import MobileNavigation from './MobileNavigation';
 import RightWidgets from './RightWidgets';
 import { useApp } from '../../context/AppContext';
+import { useWebSocket } from '../../hooks/useWebSocket';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -10,9 +11,21 @@ interface MainLayoutProps {
 }
 
 export default function MainLayout({ children, hideRightWidgets }: MainLayoutProps) {
-  const { user } = useApp();
+  const { user, token } = useApp(); // 👉 Lấy thêm token từ context
 
-  // Tạo một avatar mặc định nếu user chưa có ảnh
+  // 🔌 KÍCH HOẠT WEBSOCKET TOÀN CỤC
+  // Khi MainLayout render, Hook này sẽ chạy và báo cho Redis là User đang Online
+  const WS_URL = token
+    ? `ws://localhost:8080/api/v1/ws?token=${token}`
+    : null;
+
+  const { isConnected } = useWebSocket(WS_URL);
+
+  // Debug để kiểm tra trên trình duyệt
+  if (isConnected) {
+    console.log("🟢 Hệ thống Real-time đã sẵn sàng!");
+  }
+
   const defaultAvatar = `https://ui-avatars.com/api/?name=${user?.username || 'User'}&background=0D8ABC&color=fff`;
 
   return (

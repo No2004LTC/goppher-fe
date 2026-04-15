@@ -1,67 +1,47 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 
-export function useWebSocket(url: string | null, onMessage?: (data: any) => void) {
-  const wsRef = useRef<WebSocket | null>(null);
+export const useWebSocket = (url: string | null) => {
+  const [latestData, setLatestData] = useState<any>(null);
   const [isConnected, setIsConnected] = useState(false);
-  const [connectionError, setConnectionError] = useState<string | null>(null);
-
-  // 🔴 THUỐC ĐẶC TRỊ "STALE CLOSURE": 
-  // Dùng useRef để luôn giữ bản sao mới nhất của hàm onMessage
-  const savedOnMessage = useRef(onMessage);
-
-  useEffect(() => {
-    savedOnMessage.current = onMessage;
-  }, [onMessage]);
-  // ----------------------------------------------------
+  const ws = useRef<WebSocket | null>(null);
 
   useEffect(() => {
     if (!url) return;
 
-    try {
-      const ws = new WebSocket(url);
-      wsRef.current = ws;
+    // Khởi tạo kết nối
+    const socket = new WebSocket(url);
+    ws.current = socket;
 
-      ws.onopen = () => {
-        setIsConnected(true);
-        setConnectionError(null);
-      };
+    socket.onopen = () => {
+      console.log("🟢 [WS] Kết nối thông báo thành công");
+      setIsConnected(true);
+    };
 
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          // 🔴 Gọi hàm thông qua ref để luôn lấy được state mới nhất của ChatBox
-          if (savedOnMessage.current) savedOnMessage.current(data);
-        } catch {
-          if (savedOnMessage.current) savedOnMessage.current({ content: event.data });
-        }
-      };
+    socket.onmessage = (event) => {
+      try {
+        const parsedData = JSON.parse(event.data);
+        setLatestData(parsedData);
+      } catch (err) {
+        console.error("🔴 [WS] Lỗi định dạng dữ liệu:", err);
+      }
+    };
 
-      ws.onerror = () => {
-        setConnectionError('WebSocket connection error');
-        setIsConnected(false);
-      };
+    socket.onclose = () => {
+      console.log("⚪ [WS] Đã ngắt kết nối");
+      setIsConnected(false);
+    };
 
-      ws.onclose = () => {
-        setIsConnected(false);
-      };
-    } catch {
-      setConnectionError('Failed to connect to WebSocket');
-    }
+    socket.onerror = (error) => {
+      console.error("🔴 [WS] Lỗi kết nối WebSocket:", error);
+    };
 
+    // Hàm dọn dẹp khi Component bị hủy (quan trọng!)
     return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
+      if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+        socket.close();
       }
     };
   }, [url]);
 
-  const sendMessage = useCallback((message: any) => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(message));
-      return true;
-    }
-    return false;
-  }, []);
-
-  return { isConnected, connectionError, sendMessage };
-}
+  return { latestData, isConnected };
+};

@@ -1,7 +1,7 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, ReactNode } from 'react';
 
 // 1. Interface User khớp 100% với DTO AuthUserResponse từ Backend Go
-interface User {
+export interface User {
   id: number;
   username: string;
   email: string;
@@ -12,9 +12,7 @@ interface AppContextType {
   user: User | null;
   token: string | null;
   isAuthenticated: boolean;
-  currentPage: string;
-  setCurrentPage: (page: string) => void;
-  login: (authData: { token: string; user: User }) => void; // Nhận User thật từ BE
+  login: (authData: { token: string; user: User }) => void;
   logout: () => void;
 }
 
@@ -36,51 +34,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       return JSON.parse(savedUser);
     } catch {
-      localStorage.removeItem('user'); // Dữ liệu rác thì xóa luôn cho sạch
+      localStorage.removeItem('user');
       return null;
     }
   });
 
-  const [currentPage, setCurrentPage] = useState<string>(() =>
-    localStorage.getItem('token') ? 'feed' : 'login'
-  );
-
   const isAuthenticated = !!token && !!user;
 
   // --- HÀNH ĐỘNG (ACTIONS) ---
+  // Navigation (navigate) sẽ được truyền vào từ bên ngoài qua các hook của react-router-dom
+  // vì AppProvider không nằm trong router context
 
   const login = (authData: { token: string; user: User }) => {
-    // 1. Cập nhật State để React re-render toàn bộ app (Hiện nút Sửa/Xóa)
     setToken(authData.token);
     setUser(authData.user);
-
-    // 2. Lưu vào "bộ nhớ dài hạn" để F5 không bị mất
     localStorage.setItem('token', authData.token);
     localStorage.setItem('user', JSON.stringify(authData.user));
-
-    // 3. Đá sang trang chủ
-    setCurrentPage('feed');
+    // Navigation được xử lý tại LoginPage sau khi gọi login()
   };
 
   const logout = () => {
-    // 1. Xóa sạch dấu vết
     setToken(null);
     setUser(null);
     localStorage.removeItem('token');
     localStorage.removeItem('user');
-
-    // 2. Đá về login
-    setCurrentPage('login');
+    // Navigation được xử lý tại component gọi logout()
   };
-
-  // --- BẢO VỆ (SECURITY MIDDLEWARE) ---
-  useEffect(() => {
-    // Nếu đang ở trang cần đăng nhập mà không có token -> Văng ra Login
-    const publicPages = ['login', 'register'];
-    if (!token && !publicPages.includes(currentPage)) {
-      setCurrentPage('login');
-    }
-  }, [token, currentPage]);
 
   return (
     <AppContext.Provider
@@ -88,10 +67,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         user,
         token,
         isAuthenticated,
-        currentPage,
-        setCurrentPage,
         login,
-        logout
+        logout,
       }}
     >
       {children}
