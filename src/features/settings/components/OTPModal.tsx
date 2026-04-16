@@ -1,14 +1,20 @@
 import { useRef, useState, useEffect } from 'react';
-import { X, Shield, CheckCircle } from 'lucide-react';
-import ProgressBar from '../../../components/ui/ProgressBar';
+import { X, Shield, CheckCircle, Loader2 } from 'lucide-react';
+import toast from 'react-hot-toast';
 
-export default function OTPModal({ email, onClose, onVerify }: { email: string, onClose: () => void, onVerify: (payload: any) => void }) {
+interface OTPModalProps {
+  email: string;
+  onClose: () => void;
+  onVerify: (otpCode: string) => Promise<void>;
+  onResend: () => Promise<void>;
+}
+
+export default function OTPModal({ email, onClose, onVerify, onResend }: OTPModalProps) {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
   const [resendTimer, setResendTimer] = useState(60);
-  const [verifyProgress, setVerifyProgress] = useState(0);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
@@ -52,81 +58,88 @@ export default function OTPModal({ email, onClose, onVerify }: { email: string, 
     inputRefs.current[Math.min(pasted.length, 5)]?.focus();
   };
 
+  // --- HÀM GỌI API THẬT QUA PROP ---
   const handleVerify = async () => {
     const otp_code = otp.join('');
     if (otp_code.length < 6) {
       setError('Vui lòng nhập đủ 6 chữ số OTP.');
       return;
     }
+
     setLoading(true);
-    setVerifyProgress(0);
-    
-    // Simulate verification progress
-    const interval = setInterval(() => {
-      setVerifyProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          return 100;
-        }
-        return prev + 25;
-      });
-    }, 250);
-    
-    await new Promise((r) => setTimeout(r, 1000));
+    setError('');
 
-    const payload = { email, otp_code };
-    console.log('OTP Payload:', payload);
+    try {
+      // Đợi component cha gọi API Reset Password
+      await onVerify(otp_code);
 
-    setLoading(false);
-    setSuccess(true);
-    setTimeout(() => {
-      onVerify(payload);
-      onClose();
-    }, 1500);
+      setSuccess(true);
+      toast.success("Đổi mật khẩu thành công!");
+
+      // Thành công thì tự tắt modal sau 1.5s
+      setTimeout(() => {
+        onClose();
+      }, 1500);
+
+    } catch (err: any) {
+      // Nếu nhập sai OTP, báo lỗi đỏ
+      setError(err.message || 'Mã OTP không hợp lệ hoặc đã hết hạn.');
+      setOtp(['', '', '', '', '', '']); // Xóa trắng cho nhập lại
+      inputRefs.current[0]?.focus();
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleResend = () => {
+  // --- HÀM GỌI LẠI OTP QUA PROP ---
+  const handleResendClick = async () => {
     if (resendTimer > 0) return;
-    setOtp(['', '', '', '', '', '']);
-    setError('');
-    setResendTimer(60);
-    inputRefs.current[0]?.focus();
+
+    try {
+      await onResend();
+      toast.success("Đã gửi lại mã mới!");
+      setOtp(['', '', '', '', '', '']);
+      setError('');
+      setResendTimer(60);
+      inputRefs.current[0]?.focus();
+    } catch {
+      toast.error("Không thể gửi lại mã lúc này.");
+    }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-      <div className="absolute inset-0 bg-black bg-opacity-50 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={!loading ? onClose : undefined} />
 
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 animate-in">
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-gray-100 text-gray-400 transition"
-        >
-          <X size={18} />
-        </button>
+      <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-sm p-8 animate-in zoom-in-95 duration-200">
+        {!loading && !success && (
+          <button onClick={onClose} className="absolute top-4 right-4 p-2 rounded-full hover:bg-gray-100 text-gray-400 transition">
+            <X size={20} />
+          </button>
+        )}
 
         {success ? (
-          <div className="py-4 flex flex-col items-center text-center">
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
-              <CheckCircle size={32} className="text-green-500" />
+          <div className="py-6 flex flex-col items-center text-center animate-in zoom-in">
+            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-5">
+              <CheckCircle size={40} className="text-green-500" />
             </div>
-            <h3 className="text-lg font-bold text-gray-900 mb-1">Xác thực thành công!</h3>
-            <p className="text-sm text-gray-500">Mật khẩu của bạn đã được cập nhật.</p>
+            <h3 className="text-xl font-black text-gray-900 mb-2">Đổi mật khẩu thành công!</h3>
+            <p className="text-sm text-gray-500">Tài khoản của bạn đã an toàn.</p>
           </div>
         ) : (
           <>
-            <div className="flex flex-col items-center text-center mb-6">
-              <div className="w-14 h-14 bg-blue-100 rounded-2xl flex items-center justify-center mb-3">
-                <Shield size={26} className="text-blue-600" />
+            <div className="flex flex-col items-center text-center mb-8">
+              <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mb-4">
+                <Shield size={32} className="text-blue-600" />
               </div>
-              <h3 className="text-lg font-bold text-gray-900">Xác thực OTP</h3>
-              <p className="text-sm text-gray-500 mt-1">
-                Mã OTP 6 chữ số đã được gửi đến
+              <h3 className="text-xl font-black text-gray-900">Xác thực Email</h3>
+              <p className="text-sm text-gray-500 mt-2 leading-relaxed">
+                Nhập mã OTP 6 chữ số vừa được gửi đến<br />
+                <span className="font-bold text-gray-900">{email}</span>
               </p>
-              <p className="text-sm font-semibold text-blue-600">{email}</p>
             </div>
 
-            <div className="flex items-center justify-center gap-2 mb-4">
+            <div className="flex items-center justify-between gap-2 mb-6">
               {otp.map((digit, i) => (
                 <input
                   key={i}
@@ -138,49 +151,38 @@ export default function OTPModal({ email, onClose, onVerify }: { email: string, 
                   onChange={(e) => handleChange(i, e.target.value)}
                   onKeyDown={(e) => handleKeyDown(i, e)}
                   onPaste={handlePaste}
-                  className={`w-11 h-13 text-center text-xl font-bold border-2 rounded-xl focus:outline-none transition ${
-                    digit
+                  disabled={loading}
+                  className={`w-12 h-14 text-center text-2xl font-black border-2 rounded-xl focus:outline-none transition-all ${digit
                       ? 'border-blue-500 bg-blue-50 text-blue-700'
-                      : 'border-gray-200 text-gray-900 focus:border-blue-500'
-                  }`}
-                  style={{ height: '52px' }}
+                      : error
+                        ? 'border-red-300 bg-red-50 focus:border-red-500'
+                        : 'border-gray-200 bg-gray-50 text-gray-900 focus:border-blue-500 focus:bg-white'
+                    }`}
                 />
               ))}
             </div>
 
             {error && (
-              <p className="text-center text-xs text-red-500 mb-3">{error}</p>
+              <p className="text-center text-sm font-semibold text-red-500 mb-4 animate-in slide-in-from-bottom-1">{error}</p>
             )}
 
             <button
               onClick={handleVerify}
               disabled={loading || otp.join('').length < 6}
-              className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition shadow-lg shadow-blue-100 disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-2"
             >
-              {loading && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-              {loading ? 'Đang xác thực...' : 'Xác nhận OTP'}
+              {loading ? <Loader2 className="animate-spin" size={20} /> : 'Xác nhận OTP'}
             </button>
 
-            {loading && (
-              <div className="mt-3">
-                <ProgressBar 
-                  progress={verifyProgress} 
-                  color="blue" 
-                  size="sm"
-                  showPercentage={false}
-                />
-              </div>
-            )}
-
-            <div className="text-center mt-4">
-              <p className="text-xs text-gray-500">
+            <div className="text-center mt-6">
+              <p className="text-sm text-gray-500 font-medium">
                 Không nhận được mã?{' '}
                 <button
-                  onClick={handleResend}
-                  disabled={resendTimer > 0}
-                  className={`font-semibold ${resendTimer > 0 ? 'text-gray-400 cursor-not-allowed' : 'text-blue-600 hover:underline'}`}
+                  onClick={handleResendClick}
+                  disabled={resendTimer > 0 || loading}
+                  className={`font-bold transition ${resendTimer > 0 ? 'text-gray-300 cursor-not-allowed' : 'text-blue-600 hover:text-blue-800'}`}
                 >
-                  {resendTimer > 0 ? `Gửi lại (${resendTimer}s)` : 'Gửi lại'}
+                  {resendTimer > 0 ? `Gửi lại (${resendTimer}s)` : 'Gửi lại ngay'}
                 </button>
               </p>
             </div>

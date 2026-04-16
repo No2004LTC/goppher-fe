@@ -6,12 +6,14 @@ export interface User {
   username: string;
   email: string;
   avatar_url: string;
+  bio?: string;
 }
 
 interface AppContextType {
   user: User | null;
   token: string | null;
   isAuthenticated: boolean;
+  setUser: (user: User | null) => void;
   login: (authData: { token: string; user: User }) => void;
   logout: () => void;
 }
@@ -67,6 +69,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         user,
         token,
         isAuthenticated,
+        setUser,
         login,
         logout,
       }}
