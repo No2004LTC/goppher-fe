@@ -115,12 +115,41 @@ export default function ProfilePage() {
         }
     };
 
-    // --- MOCK HÀM UPLOAD ẢNH BÌA ---
-    const handleCoverChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const [uploadingCover, setUploadingCover] = useState(false);
+
+    // --- XỬ LÝ UPLOAD ẢNH BÌA ---
+    const handleCoverChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
-        if (file) {
-            toast('Chức năng upload Ảnh Bìa đang chờ Backend thêm trường cover_url!', { icon: '🚧' });
-            if (coverInputRef.current) coverInputRef.current.value = '';
+        if (!file) return;
+
+        if (coverInputRef.current) coverInputRef.current.value = '';
+
+        const formData = new FormData();
+        formData.append('cover', file);
+
+        setUploadingCover(true);
+        const toastId = toast.loading('Đang tải ảnh bìa lên...');
+
+        try {
+            const res = await fetch(`${BASE_URL}/users/cover`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: formData
+            });
+
+            const result = await res.json();
+
+            if (res.ok) {
+                toast.success('Cập nhật ảnh bìa thành công!', { id: toastId });
+                const newCoverUrl = result.data?.url || result.url;
+                setProfileUser((prev: any) => ({ ...prev, cover_url: newCoverUrl }));
+            } else {
+                toast.error(result.error || 'Không thể tải ảnh bìa lên', { id: toastId });
+            }
+        } catch {
+            toast.error('Lỗi kết nối server', { id: toastId });
+        } finally {
+            setUploadingCover(false);
         }
     };
 
@@ -149,9 +178,20 @@ export default function ProfilePage() {
             <div className="bg-white rounded-3xl border border-gray-100 overflow-hidden mb-6 shadow-sm">
 
                 {/* Ảnh bìa */}
-                {/* Tương lai cậu truyền cover_url vào style background-image ở đây nhé */}
-                <div className="h-48 bg-gradient-to-r from-blue-500 to-sky-300 relative group">
-                    {isMyProfile && (
+                <div
+                    className="h-48 bg-gradient-to-r from-blue-500 to-sky-300 relative group"
+                    style={
+                        profileUser.cover_url
+                            ? { backgroundImage: `url(${profileUser.cover_url})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+                            : undefined
+                    }
+                >
+                    {uploadingCover && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+                            <Loader2 className="w-8 h-8 text-white animate-spin" />
+                        </div>
+                    )}
+                    {isMyProfile && !uploadingCover && (
                         <>
                             <button
                                 onClick={() => coverInputRef.current?.click()}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Bell, Heart, MessageCircle, UserPlus, Settings, Loader2, Bookmark } from 'lucide-react';
+import { Bell, Heart, MessageCircle, UserPlus, Settings, Loader2, Bookmark, CheckCheck } from 'lucide-react';
 import MainLayout from '../../../components/layout/MainLayout';
 import { useApp } from '../../../context/AppContext';
 import { useWebSocket } from '../../../hooks/useWebSocket';
@@ -78,7 +78,7 @@ function NotificationItem({ notification, onMarkAsRead }: { notification: Notifi
 }
 
 export default function NotificationsPage() {
-  const { token } = useApp();
+  const { token, setUnreadNotifCount, unreadNotifCount } = useApp();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -148,12 +148,43 @@ export default function NotificationsPage() {
     }
   };
 
+  const handleMarkAllAsRead = async () => {
+    if (unreadNotifCount === 0) return; // Nếu đã đọc hết rồi thì thôi khỏi gọi API
+
+    // Update UI ngay lập tức
+    setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+    setUnreadNotifCount(0); // Xóa sổ chấm đỏ
+
+    // Gọi API
+    try {
+      await fetch(`${BASE_URL}/notifications/read-all`, {
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+    } catch (err) {
+      console.error("Lỗi đánh dấu tất cả đã đọc:", err);
+    }
+  };
+
   return (
     <MainLayout>
       <div className="max-w-2xl mx-auto pb-20 lg:pb-0">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Thông báo</h1>
-          <button className="p-2 rounded-full hover:bg-gray-100"><Settings size={20} /></button>
+          <div className="flex items-center gap-2">
+            {unreadNotifCount > 0 && (
+              <button
+                onClick={handleMarkAllAsRead}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-blue-600 hover:bg-blue-50 rounded-full transition"
+              >
+                <CheckCheck size={18} />
+                Đánh dấu tất cả đã đọc
+              </button>
+            )}
+            <button className="p-2 rounded-full hover:bg-gray-100 text-gray-500">
+              <Settings size={20} />
+            </button>
+          </div>
         </div>
 
         {loading ? (

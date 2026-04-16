@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { Heart, MessageCircle, Share2, MoreHorizontal, Bookmark, Loader2, Edit2, Trash2 } from 'lucide-react';
 import { useApp } from '../../../context/AppContext';
+import { useNavigate } from 'react-router-dom';
 
 function timeAgo(dateStr: string) {
   const date = new Date(dateStr);
@@ -14,6 +15,7 @@ function timeAgo(dateStr: string) {
 
 export default function PostCard({ post = {} as any, onDelete }: any) {
   const { token, user: currentUser } = useApp();
+  const navigate = useNavigate();
   const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api/v1';
 
   // --- 1. ĐỊNH DANH TÁC GIẢ ---
@@ -209,9 +211,24 @@ export default function PostCard({ post = {} as any, onDelete }: any) {
         {/* HEADER */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
-            <img src={authorAvatar} alt={authorName} className="w-10 h-10 rounded-full object-cover border border-gray-100" />
+            <button
+              onClick={() => navigate(`/profile/${authorName}`)}
+              className="flex-shrink-0 focus:outline-none"
+              aria-label={`Xem hồ sơ của ${authorName}`}
+            >
+              <img
+                src={authorAvatar}
+                alt={authorName}
+                className="w-10 h-10 rounded-full object-cover border border-gray-100 hover:opacity-80 transition cursor-pointer"
+              />
+            </button>
             <div>
-              <p className="text-sm font-bold text-gray-900">{authorName}</p>
+              <button
+                onClick={() => navigate(`/profile/${authorName}`)}
+                className="text-sm font-bold text-gray-900 hover:underline text-left focus:outline-none"
+              >
+                {authorName}
+              </button>
               <p className="text-[11px] text-gray-400">{timeAgo(post.created_at)}</p>
             </div>
           </div>

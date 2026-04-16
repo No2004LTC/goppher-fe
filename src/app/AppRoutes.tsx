@@ -11,9 +11,9 @@ import ChatPage from '../features/chat/pages/ChatPage';
 import NotificationsPage from '../features/notifications/pages/NotificationsPage';
 import FriendsPage from '../features/friends/pages/FriendsPage';
 import SavedPage from '../features/saved/pages/SavedPage';
-import ExplorePage from '../features/explore/pages/ExplorePage';
 import SettingsPage from '../features/settings/pages/SettingsPage';
 import ProfilePage from '../features/profile/pages/ProfilePage';
+import PublicProfilePage from '../features/profile/pages/PublicProfilePage';
 
 export default function AppRoutes() {
   return (
@@ -34,9 +34,9 @@ export default function AppRoutes() {
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/friends" element={<FriendsPage />} />
         <Route path="/saved" element={<SavedPage />} />
-        <Route path="/explore" element={<ExplorePage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/profile/:username" element={<PublicProfilePage />} />
       </Route>
 
       {/* Catch-all: mọi route không xác định → /feed */}
