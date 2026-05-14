@@ -160,11 +160,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!latestData) return;
 
-    // 1. LUỒNG BẢN ĐỒ ONLINE (Kỹ thuật trễ 2.5s)
+    // 1. LUỒNG BẢN ĐỒ ONLINE (Đã nâng cấp khả năng bóc tách ID)
     if (latestData.type === 'USER_STATUS_CHANGE') {
-      const { user_id, status } = latestData.data;
-      const isOnline = status === 'online';
-      const uid = String(user_id);
+      // 🚀 BAO LÔ: Lấy data dù có bọc trong vỏ hộp hay không
+      const rawData = latestData.data || latestData; 
+      
+      // 🚀 BAO LÔ: Quét mọi kiểu viết hoa/thường của Backend Go
+      const uidRaw = rawData.user_id || rawData.UserID || rawData.id || rawData.ID;
+      const statusRaw = rawData.status || rawData.Status;
+
+      // Nếu không tìm thấy ID, bỏ qua để tránh lỗi sập App
+      if (!uidRaw) return; 
+
+      const isOnline = statusRaw === 'online';
+      const uid = String(uidRaw);
 
       if (isOnline) {
         if (offlineTimers.current[uid]) {
