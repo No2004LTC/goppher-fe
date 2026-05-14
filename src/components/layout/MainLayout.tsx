@@ -1,33 +1,37 @@
+import { useEffect } from 'react';
 import { Zap, Bell, Search } from 'lucide-react';
-import { Link } from 'react-router-dom'; // 👉 Thêm import Link
+import { Link } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import MobileNavigation from './MobileNavigation';
 import RightWidgets from './RightWidgets';
 import { useApp } from '../../context/AppContext';
-import { useWebSocket } from '../../hooks/useWebSocket';
 
 interface MainLayoutProps {
   children: React.ReactNode;
   hideRightWidgets?: boolean;
-  fullHeightContent?: boolean; // Khi true: content không có scroll, dung lượng cố định theo viewport (dùng cho Chat)
+  fullHeightContent?: boolean;
 }
 
 export default function MainLayout({ children, hideRightWidgets, fullHeightContent }: MainLayoutProps) {
-  // 👉 Đã xóa setIsNotifPanelOpen vì không dùng Panel nữa
-  const { user, token, unreadNotifCount } = useApp();
-
-  // 🔌 KÍCH HOẠT WEBSOCKET TOÀN CỤC
-  // Khi MainLayout render, Hook này sẽ chạy và báo cho Redis là User đang Online
-  const WS_URL = token
-    ? `ws://localhost:8080/api/v1/ws?token=${token}`
-    : null;
-
-  const { isConnected } = useWebSocket(WS_URL);
+  // 🚀 LẤY TẤT CẢ TỪ APP CONTEXT (Tuyệt đối không gọi useWebSocket ở đây để tránh nhân bản luồng)
+  const { user, unreadNotifCount, setUnreadNotifCount, latestData, wsConnected } = useApp();
 
   // Debug để kiểm tra trên trình duyệt
-  if (isConnected) {
-    console.log("🟢 Hệ thống Real-time đã sẵn sàng!");
-  }
+  useEffect(() => {
+    if (wsConnected) {
+      console.log("🟢 [MainLayout] Đang dùng chung sóng Real-time từ AppContext!");
+    }
+  }, [wsConnected]);
+
+  // 🚀 BỘ TAI NGHE: Bắt sóng thông báo và nhảy số cái chuông
+  useEffect(() => {
+    if (!latestData) return;
+
+    if (latestData.type === 'NOTIFICATION') {
+      console.log("🔔 Đã bắt được thông báo mới:", latestData.data);
+      setUnreadNotifCount((prev: number) => prev + 1);
+    }
+  }, [latestData, setUnreadNotifCount]);
 
   const defaultAvatar = `https://ui-avatars.com/api/?name=${user?.username || 'User'}&background=0D8ABC&color=fff`;
 
@@ -48,7 +52,6 @@ export default function MainLayout({ children, hideRightWidgets, fullHeightConte
             <Search size={20} />
           </button>
 
-          {/* 👉 Sửa nút Chuông thành thẻ Link nhảy sang trang /notifications */}
           <Link
             to="/notifications"
             className="p-2 rounded-full hover:bg-gray-100 text-gray-500 relative"
@@ -70,7 +73,6 @@ export default function MainLayout({ children, hideRightWidgets, fullHeightConte
       <div className="lg:pl-64">
         <div className="max-w-6xl mx-auto px-4 pt-16 lg:pt-0">
           {fullHeightContent ? (
-            // Chat layout: chiếu cao cố định, không bị MobileNav che
             <div className="py-3 pb-[72px] lg:pb-6 lg:py-6">
               <main className="min-w-0">{children}</main>
             </div>
@@ -84,7 +86,6 @@ export default function MainLayout({ children, hideRightWidgets, fullHeightConte
       </div>
 
       <MobileNavigation />
-      {/* 👉 Đã xóa <NotificationPanel /> ở đây */}
     </div>
   );
 }

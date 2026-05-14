@@ -1,164 +1,157 @@
-import { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useState, useEffect, useMemo } from 'react';
+import { useSearchParams, useLocation } from 'react-router-dom';
 import ConversationList from '../components/ConversationList';
 import ChatBox from '../components/ChatBox';
 import MainLayout from '../../../components/layout/MainLayout';
-import { useWebSocket } from '../../../hooks/useWebSocket';
 import { useApp } from '../../../context/AppContext';
 
 export default function ChatPage() {
   const [searchParams] = useSearchParams();
+  const location = useLocation();
   const toUserId = searchParams.get('to_user');
 
-  const { token, setUnreadChatCount } = useApp();
-  const [selected, setSelected] = useState<any | null>(null);
-  const [showChat, setShowChat] = useState<boolean>(false);
+  // 🚀 LẤY TẤT CẢ TỪ APP CONTEXT (Nóc nhà)
+  const { 
+    token, 
+    friends, setFriends, 
+    strangers, setStrangers, 
+    isChatLoading, 
+    setUnreadChatCount,
+    setCurrentChatUserId, 
+    latestData 
+  } = useApp();
 
-  const [friends, setFriends] = useState<any[]>([]);
-  const [strangers, setStrangers] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  // 🚀 CHỈ LƯU ID: Kỹ thuật chống lỗi "Fake Offline"
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [showChat, setShowChat] = useState<boolean>(false);
+  const [initialTab, setInitialTab] = useState<'friends' | 'strangers'>('friends');
 
   const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api/v1';
-  const WS_URL = token ? `ws://localhost:8080/api/v1/ws?token=${token}` : null;
 
-  // HỨNG WEBSOCKET 1 LẦN DUY NHẤT Ở ĐÂY
-  const { latestData } = useWebSocket(WS_URL);
+  // 🚀 TỰ ĐỘNG LẤY DATA MỚI NHẤT DỰA TRÊN ID
+  const selectedConversation = useMemo(() => {
+    if (!selectedId) return null;
+    const all = [...friends, ...strangers];
+    return all.find(c => String(c.user.id) === String(selectedId)) || null;
+  }, [selectedId, friends, strangers]);
 
+  // XỬ LÝ KHI NHẢY TỪ TRANG KHÁC VÀO CHAT (Qua state hoặc URL)
   useEffect(() => {
-    const fetchContacts = async () => {
-      if (!token) return;
-      try {
-        const response = await fetch(`${BASE_URL}/chats/conversations`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const result = await response.json();
-        if (response.ok) {
-          const mapConv = (u: any) => ({
-            id: u.partner_id || u.id,
-            user: {
-              id: u.partner_id || u.id,
-              username: u.partner_username || u.username,
-              avatar_url: u.partner_avatar_url || u.avatar_url
-            },
-            last_message: u.last_message || '',
-            last_message_at: u.last_message_at,
-            unread: u.unread_count || 0,
-            is_online: Boolean(u.is_online)
-          });
-          const rawFriends = result.data?.friends || [];
-          const rawStrangers = result.data?.strangers || [];
+    if (isChatLoading) return;
 
-          let f = rawFriends.map(mapConv);
-          let s = rawStrangers.map(mapConv);
+    const stateData = location.state as any;
+    const targetUserFromState = stateData?.targetUser;
+    
+    if (targetUserFromState) {
+      if (stateData?.forceTab) setInitialTab(stateData.forceTab);
 
-          // TÍNH NĂNG MỞ CHAT VỚI NGƯỜI LẠ BẰNG ID ĐÃ ĐƯỢC FIX LỖI API
-          if (toUserId) {
-            const allConvs = [...f, ...s];
-            const target = allConvs.find(c => String(c.user.id) === String(toUserId));
-            if (target) {
-              setSelected(target);
-              setShowChat(true);
-            } else {
-              // Gọi đúng API mới viết ở BE
-              fetch(`${BASE_URL}/users/id/${toUserId}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-              })
-                .then(res => res.json())
-                .then(data => {
-                  if (data.data) {
-                    const newConv = {
-                      id: data.data.id,
-                      user: { id: data.data.id, username: data.data.username, avatar_url: data.data.avatar_url },
-                      last_message: '',
-                      unread: 0,
-                      is_online: false
-                    };
-                    s = [newConv, ...s];
-                    setStrangers(s); // Ép update giao diện
-                    setSelected(newConv);
-                    setShowChat(true);
-                  }
-                });
-            }
-          }
+      const all = [...friends, ...strangers];
+      let targetConv = all.find(c => String(c.user.id) === String(targetUserFromState.id));
 
-          setFriends(f);
-          setStrangers(s);
-        }
-      } finally { setLoading(false); }
-    };
-    fetchContacts();
-  }, [token, toUserId, BASE_URL]);
-
-  // UPDATE UI KHI CÓ TIN NHẮN TỪ WEBSOCKET
-  useEffect(() => {
-    if (!latestData) return;
-    const data = latestData.data || latestData; // Đảm bảo lấy đúng data
-    if (latestData.type === 'NOTIFICATION') return;
-
-    const msg = {
-      from_id: data.from_user_id || data.FromUserID,
-      content: data.content || data.Content,
-    };
-
-    const updateConvList = (prev: any[]) => prev.map((conv) => {
-      if (String(conv.user.id) === String(msg.from_id)) {
-        const isCurrentChat = selected?.user?.id === conv.user.id;
-        return {
-          ...conv,
-          last_message: msg.content,
+      if (!targetConv) {
+        targetConv = {
+          id: targetUserFromState.id,
+          user: {
+            id: targetUserFromState.id,
+            username: targetUserFromState.username,
+            avatar_url: targetUserFromState.avatar_url,
+          },
+          last_message: '',
           last_message_at: new Date().toISOString(),
-          unread: isCurrentChat ? 0 : conv.unread + 1
+          unread: 0,
+          is_online: false
         };
+        setStrangers((prev: any[]) => [targetConv, ...prev]);
       }
-      return conv;
-    });
 
-    setFriends(updateConvList);
-    setStrangers(updateConvList);
-  }, [latestData, selected]);
+      handleSelect(targetConv);
+      window.history.replaceState({}, document.title);
+    } 
+    else if (toUserId) {
+      const all = [...friends, ...strangers];
+      let targetConv = all.find(c => String(c.user.id) === String(toUserId));
+      
+      if (targetConv) {
+        handleSelect(targetConv);
+      } else {
+        // Nếu không có trong list, gọi API lấy info user đó
+        fetch(`${BASE_URL}/users/id/${toUserId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+          .then(res => res.json())
+          .then(data => {
+            if (data.data) {
+              const newConv = {
+                id: data.data.id,
+                user: { id: data.data.id, username: data.data.username, avatar_url: data.data.avatar_url },
+                last_message: '',
+                last_message_at: new Date().toISOString(),
+                unread: 0,
+                is_online: false
+              };
+              setStrangers(prev => [newConv, ...prev]);
+              handleSelect(newConv);
+            }
+          })
+          .catch(err => console.error("Lỗi lấy thông tin user lạ:", err));
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isChatLoading, location.state, toUserId, token, BASE_URL]);
 
   const handleSelect = async (conv: any) => {
-    setSelected(conv);
+    setSelectedId(String(conv.user.id));
     setShowChat(true);
+    setCurrentChatUserId(String(conv.user.id));
 
     if (conv.unread > 0) {
-      setFriends(prev => prev.map(c => c.id === conv.id ? { ...c, unread: 0 } : c));
-      setStrangers(prev => prev.map(c => c.id === conv.id ? { ...c, unread: 0 } : c));
       setUnreadChatCount((prev: number) => Math.max(0, prev - conv.unread));
+      
+      const resetUnread = (list: any[]) => list.map(c =>
+        String(c.user.id) === String(conv.user.id) ? { ...c, unread: 0 } : c
+      );
+      setFriends((prev: any[]) => resetUnread(prev));
+      setStrangers((prev: any[]) => resetUnread(prev));
 
       try {
-        await fetch(`${BASE_URL}/chats/${conv.id}/read`, {
+        await fetch(`${BASE_URL}/chats/${conv.user.id}/read`, {
           method: 'PUT',
           headers: { 'Authorization': `Bearer ${token}` }
         });
-      } catch (error) {
-        console.error("Lỗi cập nhật trạng thái đã đọc:", error);
-      }
+      } catch (e) { }
     }
   };
 
+  const handleBack = () => {
+    setShowChat(false);
+    setSelectedId(null);
+    setCurrentChatUserId(null);
+  };
+
+  // Reset current chat user khi rời khỏi trang
+  useEffect(() => {
+    return () => setCurrentChatUserId(null);
+  }, [setCurrentChatUserId]);
+
   return (
     <MainLayout hideRightWidgets fullHeightContent>
-      <div
-        className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm h-[calc(100dvh-10rem)] lg:h-[calc(100dvh-3rem)]"
-        id="chat-container"
-      >
+      <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm h-[calc(100dvh-10rem)] lg:h-[calc(100dvh-3rem)]">
         <div className="flex h-full">
           <div className={`w-full lg:w-80 xl:w-96 flex-shrink-0 h-full border-r border-gray-100 ${showChat ? 'hidden lg:flex' : 'flex'} flex-col`}>
             <ConversationList
               friends={friends}
               strangers={strangers}
-              loading={loading}
-              selectedId={selected?.id}
+              loading={isChatLoading}
+              selectedId={selectedId} // Chuyền ID xuống
               onSelect={handleSelect}
+              defaultTab={initialTab}
             />
           </div>
+
           <div className={`flex-1 h-full ${showChat ? 'flex' : 'hidden lg:flex'} flex-col bg-gray-50/50`}>
-            {/* TRUYỀN THẲNG latestData XUỐNG CHATBOX ĐỂ CHỐNG XUNG ĐỘT */}
             <ChatBox
-              conversation={selected}
-              onBack={() => setShowChat(false)}
+              conversation={selectedConversation} // Truyền object đã update
+              onBack={handleBack}
               incomingMessage={latestData}
             />
           </div>

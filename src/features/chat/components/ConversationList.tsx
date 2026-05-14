@@ -1,31 +1,40 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Search, Edit } from 'lucide-react';
+import { useApp } from '../../../context/AppContext'; // 🚀 Bê sóng từ Nóc nhà về
 
-export default function ConversationList({ friends = [], strangers = [], loading, selectedId, onSelect }: any) {
+export default function ConversationList({ friends = [], strangers = [], loading, selectedId, onSelect, defaultTab = 'friends'}: any) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'friends' | 'strangers'>('friends');
+  const [activeTab, setActiveTab] = useState<'friends' | 'strangers'>(defaultTab);
+
+  // 🚀 Lấy bản đồ Online từ AppContext
+  const { onlineMap } = useApp();
+
+  useEffect(() => {
+    setActiveTab(defaultTab);
+  }, [defaultTab]);
 
   const activeList = activeTab === 'friends' ? friends : strangers;
 
-  const filteredConversations = activeList.filter((conv: any) =>
-    conv.user.username.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredConversations = (activeList || []).filter((conv: any) => {
+    const uname = conv?.user?.username || conv?.partner_username || '';
+    return uname.toLowerCase().includes((searchTerm || '').toLowerCase());
+  });
 
-  // Hàm chuyển đổi thời gian rút gọn
+  // 🚀 Hàm hiển thị Giờ/Phút chính xác (Chuẩn Zalo/Messenger)
   const formatTime = (isoString?: string) => {
     if (!isoString || isoString.startsWith('0001')) return '';
     const date = new Date(isoString);
-    const now = new Date();
-    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    if (isNaN(date.getTime())) return '';
 
-    if (diffInSeconds < 60) return `vài giây`;
-    const diffInMinutes = Math.floor(diffInSeconds / 60);
-    if (diffInMinutes < 60) return `${diffInMinutes}p`;
-    const diffInHours = Math.floor(diffInMinutes / 60);
-    if (diffInHours < 24) return `${diffInHours}g`;
-    const diffInDays = Math.floor(diffInHours / 24);
-    if (diffInDays < 7) return `${diffInDays}n`;
-    return date.toLocaleDateString();
+    const now = new Date();
+    const isToday = date.getDate() === now.getDate() &&
+      date.getMonth() === now.getMonth() &&
+      date.getFullYear() === now.getFullYear();
+
+    if (isToday) {
+      return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+    }
+    return date.toLocaleDateString('vi-VN');
   };
 
   return (
@@ -54,15 +63,13 @@ export default function ConversationList({ friends = [], strangers = [], loading
       <div className="flex border-b border-gray-100">
         <button
           onClick={() => setActiveTab('friends')}
-          className={`flex-1 py-3 text-sm font-bold text-center transition-colors border-b-2 ${activeTab === 'friends' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:bg-gray-50'
-            }`}
+          className={`flex-1 py-3 text-sm font-bold text-center transition-colors border-b-2 ${activeTab === 'friends' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:bg-gray-50'}`}
         >
           Bạn bè
         </button>
         <button
           onClick={() => setActiveTab('strangers')}
-          className={`flex-1 py-3 text-sm font-bold text-center transition-colors border-b-2 ${activeTab === 'strangers' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:bg-gray-50'
-            }`}
+          className={`flex-1 py-3 text-sm font-bold text-center transition-colors border-b-2 ${activeTab === 'strangers' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:bg-gray-50'}`}
         >
           Người lạ / Chờ
         </button>
@@ -77,46 +84,56 @@ export default function ConversationList({ friends = [], strangers = [], loading
             {searchTerm ? 'Không tìm thấy kết quả.' : 'Chưa có cuộc trò chuyện nào.'}
           </div>
         ) : (
-          filteredConversations.map((conv: any) => (
-            <button
-              key={conv.id}
-              onClick={() => onSelect(conv)}
-              className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition text-left ${selectedId === conv.id ? 'bg-blue-50' : ''
-                }`}
-            >
-              <div className="relative flex-shrink-0">
-                <img
-                  src={conv.user.avatar_url || `https://ui-avatars.com/api/?name=${conv.user.username}&background=random`}
-                  alt={conv.user.username}
-                  className="w-12 h-12 rounded-full object-cover"
-                />
-                {conv.is_online && (
-                  <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-white" />
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between mb-0.5">
-                  <p className={`text-[15px] truncate ${conv.unread > 0 ? 'font-bold text-gray-900' : 'font-semibold text-gray-800'}`}>
-                    {conv.user.username}
-                  </p>
-                  <span className="text-[11px] text-gray-400 font-medium whitespace-nowrap ml-2">
-                    {formatTime(conv.last_message_at)}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <p className={`text-[13px] truncate pr-2 ${conv.unread > 0 ? 'font-semibold text-gray-900' : 'text-gray-400 italic'}`}>
-                    {conv.last_message || 'Bắt đầu cuộc trò chuyện ngay...'}
-                  </p>
-                  {/* Hiển thị số tin chưa đọc */}
-                  {conv.unread > 0 && (
-                    <div className="flex-shrink-0 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-sm">
-                      {conv.unread > 99 ? '99+' : conv.unread}
-                    </div>
+          filteredConversations.map((conv: any) => {
+            const userIdStr = String(conv?.user?.id);
+            const isSelected = String(selectedId) === userIdStr;
+            
+            // 🚀 DÒ TÌM TRONG BẢN ĐỒ XEM ÔNG NÀY CÓ ONLINE KHÔNG
+            const isActuallyOnline = onlineMap[userIdStr] === true;
+            const unreadCount = Number(conv?.unread || 0);
+
+            return (
+              <button
+                key={userIdStr || Math.random()}
+                onClick={() => onSelect(conv)}
+                className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition text-left ${isSelected ? 'bg-blue-50' : ''}`}
+              >
+                <div className="relative flex-shrink-0">
+                  <img
+                    src={conv?.user?.avatar_url || `https://ui-avatars.com/api/?name=${conv?.user?.username || 'User'}&background=random`}
+                    alt={conv?.user?.username}
+                    className="w-12 h-12 rounded-full object-cover"
+                  />
+                  {/* 🚀 ĐÈN NHÁY DỰA THEO BẢN ĐỒ ONLINE */}
+                  {isActuallyOnline && (
+                    <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-white" />
                   )}
                 </div>
-              </div>
-            </button>
-          ))
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-0.5">
+                    <p className={`text-[15px] truncate ${unreadCount > 0 ? 'font-bold text-gray-900' : 'font-semibold text-gray-800'}`}>
+                      {conv?.user?.username || 'Người dùng'}
+                    </p>
+                    <span className="text-[11px] text-gray-400 font-medium whitespace-nowrap ml-2">
+                      {formatTime(conv?.last_message_at)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <p className={`text-[13px] truncate pr-2 ${unreadCount > 0 ? 'font-semibold text-gray-900' : 'text-gray-400 italic'}`}>
+                      {conv?.last_message || 'Bắt đầu cuộc trò chuyện ngay...'}
+                    </p>
+                    {/* Hiển thị số tin chưa đọc */}
+                    {unreadCount > 0 && (
+                      <div className="flex-shrink-0 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-sm">
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </button>
+            );
+          })
         )}
       </div>
     </div>

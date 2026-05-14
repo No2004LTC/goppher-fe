@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { Bell, Heart, MessageCircle, UserPlus, Settings, Loader2, Bookmark, CheckCheck } from 'lucide-react';
 import MainLayout from '../../../components/layout/MainLayout';
 import { useApp } from '../../../context/AppContext';
-import { useWebSocket } from '../../../hooks/useWebSocket';
 
 interface Actor {
   id: number;
@@ -78,12 +77,12 @@ function NotificationItem({ notification, onMarkAsRead }: { notification: Notifi
 }
 
 export default function NotificationsPage() {
-  const { token, setUnreadNotifCount, unreadNotifCount } = useApp();
+  // 🚀 CHỈ DÙNG useApp() ĐỂ LẤY SÓNG, BỎ useWebSocket()
+  const { token, latestData, setUnreadNotifCount, unreadNotifCount } = useApp();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
 
   const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api/v1';
-  const WS_URL = token ? `ws://localhost:8080/api/v1/ws?token=${token}` : null;
 
   // 1. Lấy dữ liệu cũ từ API
   const fetchNotifications = async () => {
@@ -102,19 +101,17 @@ export default function NotificationsPage() {
 
   useEffect(() => {
     if (token) fetchNotifications();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  // 2. Lắng nghe Real-time thông qua Hook
-  const { latestData } = useWebSocket(WS_URL);
-
+  // 2. Lắng nghe Real-time thông qua Context
   useEffect(() => {
     if (!latestData) return;
 
     if (latestData.type === 'NOTIFICATION') {
       const data = latestData.data;
-      console.log("🔔 [Realtime] Thông báo mới:", data);
+      console.log("🔔 [Realtime] Thông báo mới trên Trang:", data);
 
-      // Nếu dữ liệu WS quá sơ sài, gọi lại API để lấy bản đầy đủ
       if (!data.actor?.username || !data.id) {
         fetchNotifications();
         return;
@@ -134,10 +131,14 @@ export default function NotificationsPage() {
         return [newNotif, ...prev];
       });
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [latestData]);
 
   const handleMarkAsRead = async (id: number) => {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
+    // 🚀 TRỪ ĐI 1 THÔNG BÁO CHƯA ĐỌC TRÊN HEADER
+    setUnreadNotifCount(prev => Math.max(0, prev - 1));
+
     try {
       await fetch(`${BASE_URL}/notifications/${id}/read`, {
         method: 'PUT',
@@ -149,13 +150,11 @@ export default function NotificationsPage() {
   };
 
   const handleMarkAllAsRead = async () => {
-    if (unreadNotifCount === 0) return; // Nếu đã đọc hết rồi thì thôi khỏi gọi API
+    if (unreadNotifCount === 0) return;
 
-    // Update UI ngay lập tức
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
-    setUnreadNotifCount(0); // Xóa sổ chấm đỏ
+    setUnreadNotifCount(0);
 
-    // Gọi API
     try {
       await fetch(`${BASE_URL}/notifications/read-all`, {
         method: 'PUT',
